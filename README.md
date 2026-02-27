@@ -71,3 +71,5 @@ MCP 클라이언트 설정 파일에 추가:
 ## 라이선스
 
 MIT
+
+<!-- mcp-name: io.github.wintenboy/law-ontology-mcp -->
