@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>법령 온톨로지 네트워크 시각화</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; overflow: hidden; }
+
+.header { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: #1e293b; border-bottom: 1px solid #334155; }
+.header h1 { font-size: 18px; font-weight: 600; color: #f8fafc; }
+.tabs { display: flex; gap: 4px; }
+.tab { padding: 8px 20px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; font-weight: 500; background: #334155; color: #94a3b8; border: 1px solid #475569; border-bottom: none; transition: all 0.2s; user-select: none; }
+.tab:hover { background: #475569; color: #e2e8f0; }
+.tab.active { background: #3b82f6; color: #ffffff; border-color: #3b82f6; }
+.tab.disabled { opacity: 0.4; cursor: not-allowed; }
+.tab.disabled:hover { background: #334155; color: #94a3b8; }
+
+.main { display: flex; height: calc(100vh - 57px); }
+.graph-container { flex: 1; position: relative; }
+.graph-panel { width: 100%; height: 100%; display: none; }
+.graph-panel.active { display: block; }
+
+.side-panel { width: 380px; background: #1e293b; border-left: 1px solid #334155; overflow-y: auto; display: flex; flex-direction: column; transition: width 0.2s; }
+.side-panel.collapsed { width: 0; min-width: 0; overflow: hidden; border: none; }
+.panel-header { padding: 16px; background: #334155; display: flex; justify-content: space-between; align-items: center; min-height: 56px; }
+.panel-header h2 { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel-close { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 20px; padding: 4px 8px; border-radius: 4px; }
+.panel-close:hover { background: #475569; color: #e2e8f0; }
+.panel-content { padding: 16px; flex: 1; }
+.panel-empty { padding: 40px 20px; text-align: center; color: #64748b; font-size: 14px; line-height: 1.6; }
+.prop-group { margin-bottom: 16px; }
+.prop-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 600; }
+.prop-value { font-size: 13px; color: #e2e8f0; line-height: 1.5; word-break: break-all; }
+.prop-value a { color: #60a5fa; text-decoration: none; }
+.prop-value a:hover { text-decoration: underline; }
+.prop-item { padding: 3px 0; border-bottom: 1px solid #1e293b; }
+
+.legend { padding: 10px 24px; background: #1e293b; border-top: 1px solid #334155; display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+.graph-search { position: absolute; top: 12px; left: 12px; z-index: 10; }
+.graph-search input { padding: 8px 12px; border-radius: 6px; border: 1px solid #475569; background: rgba(30,41,59,0.95); color: #e2e8f0; font-size: 13px; width: 260px; outline: none; }
+.graph-search input:focus { border-color: #3b82f6; }
+.graph-search input::placeholder { color: #64748b; }
+
+.graph-info { position: absolute; bottom: 12px; left: 12px; z-index: 10; font-size: 12px; color: #64748b; background: rgba(15,23,42,0.85); padding: 6px 10px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>법령 온톨로지 네트워크</h1>
+  <div class="tabs">
+    <div class="tab active" data-tab="ontology" onclick="switchTab('ontology')">온톨로지 스키마</div>
+    <div class="tab {{LAW_TAB_CLASS}}" data-tab="law" onclick="switchTab('law')">법령 네트워크</div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="graph-container">
+    <div id="ontology-panel" class="graph-panel active">
+      <div class="graph-search">
+        <input type="text" id="onto-search" placeholder="클래스/프로퍼티 검색..." oninput="searchGraph('ontology', this.value)">
+      </div>
+      <div id="ontology-graph" style="width:100%;height:100%;"></div>
+      <div id="ontology-info" class="graph-info"></div>
+    </div>
+    <div id="law-panel" class="graph-panel">
+      <div class="graph-search">
+        <input type="text" id="law-search" placeholder="법령명 검색..." oninput="searchGraph('law', this.value)">
+      </div>
+      <div id="law-graph" style="width:100%;height:100%;"></div>
+      <div id="law-info" class="graph-info"></div>
+    </div>
+  </div>
+
+  <div class="side-panel" id="sidePanel">
+    <div class="panel-header">
+      <h2 id="panel-title">상세 정보</h2>
+      <button class="panel-close" onclick="closePanel()">&times;</button>
+    </div>
+    <div class="panel-content" id="panel-content">
+      <div class="panel-empty">노드를 클릭하면<br>상세 정보가 표시됩니다.</div>
+    </div>
+  </div>
+</div>
+
+<div class="legend" id="legend"></div>
+
+<script>
+const ONTOLOGY_DATA = {{ONTOLOGY_DATA}};
+const LAW_NETWORK_DATA = {{LAW_NETWORK_DATA}};
+const HAS_LAW_NETWORK = {{HAS_LAW_NETWORK}};
+
+const CLASS_COLORS = {
+  'KoreanLegislation': { bg: '#3b82f6', border: '#2563eb', label: '현행법령' },
+  'KoreanPrecedent': { bg: '#10b981', border: '#059669', label: '판례' },
+  'KoreanPrecedentCase': { bg: '#10b981', border: '#059669', label: '판례사건' },
+  'KoreanOrdinance': { bg: '#f59e0b', border: '#d97706', label: '자치법규' },
+  'KoreanAdministrativeRules': { bg: '#ef4444', border: '#dc2626', label: '행정규칙' },
+  'KoreanTreaty': { bg: '#8b5cf6', border: '#7c3aed', label: '조약' },
+  'KoreanConstitutionalCourtCase': { bg: '#ec4899', border: '#db2777', label: '헌법재판' },
+  'KoreanAdministrativeTrialCase': { bg: '#f97316', border: '#ea580c', label: '행정심판' },
+  'KoreanCommitteeDicision': { bg: '#06b6d4', border: '#0891b2', label: '위원회결정' },
+  'KoreanExplanationCase': { bg: '#84cc16', border: '#65a30d', label: '유권해석' },
+  'KoreanSchoolPublicRules': { bg: '#a855f7', border: '#9333ea', label: '학칙' },
+  'KoreanLegislationNorms': { bg: '#6366f1', border: '#4f46e5', label: '법령규범' },
+  '_default': { bg: '#64748b', border: '#475569', label: '기타' },
+};
+
+function getColor(classUri) {
+  if (!classUri) return CLASS_COLORS['_default'];
+  for (const [key, val] of Object.entries(CLASS_COLORS)) {
+    if (key !== '_default' && classUri.includes(key)) return val;
+  }
+  return CLASS_COLORS['_default'];
+}
+
+let ontologyNetwork = null;
+let lawNetwork = null;
+let currentTab = 'ontology';
+
+function initOntologyGraph() {
+  const container = document.getElementById('ontology-graph');
+  const nodes = new vis.DataSet(ONTOLOGY_DATA.nodes.map(n => ({
+    ...n,
+    color: { background: n.color || '#64748b', border: n.borderColor || '#475569', highlight: { background: n.color || '#64748b', border: '#ffffff' }, hover: { background: n.color || '#64748b', border: '#94a3b8' } },
+    font: { color: '#e2e8f0', size: n.fontSize || 14, face: 'Malgun Gothic' },
+    shadow: { enabled: true, color: 'rgba(0,0,0,0.3)', size: 8 }
+  })));
+  const edges = new vis.DataSet(ONTOLOGY_DATA.edges.map(e => ({
+    ...e,
+    color: { color: e.dashes ? '#6366f1' : '#475569', highlight: '#60a5fa', opacity: 0.8 },
+    font: { color: '#94a3b8', size: 11, strokeWidth: 3, strokeColor: '#0f172a', face: 'Malgun Gothic' },
+    smooth: { type: 'curvedCW', roundness: 0.2 }
+  })));
+
+  ontologyNetwork = new vis.Network(container, { nodes, edges }, {
+    physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -80, centralGravity: 0.008, springLength: 220, springConstant: 0.02, damping: 0.4 }, stabilization: { iterations: 400 } },
+    interaction: { hover: true, zoomView: true, dragView: true, tooltipDelay: 200 },
+    nodes: { shape: 'dot', size: 20, borderWidth: 2 },
+    edges: { arrows: { to: { enabled: true, scaleFactor: 0.5 } }, width: 1.5 }
+  });
+
+  ontologyNetwork.on('click', function(params) {
+    if (params.nodes.length > 0) {
+      const nodeId = params.nodes[0];
+      const nodeData = ONTOLOGY_DATA.nodes.find(n => n.id === nodeId);
+      if (nodeData) showOntologyDetail(nodeData);
+    }
+  });
+
+  document.getElementById('ontology-info').textContent =
+    `노드: ${ONTOLOGY_DATA.nodes.length} | 엣지: ${ONTOLOGY_DATA.edges.length}`;
+}
+
+function initLawGraph() {
+  if (!HAS_LAW_NETWORK) return;
+  const container = document.getElementById('law-graph');
+  const nodes = new vis.DataSet(LAW_NETWORK_DATA.nodes.map(n => ({
+    ...n,
+    color: { background: n.color || '#64748b', border: n.borderColor || '#475569', highlight: { background: n.color || '#64748b', border: '#ffffff' }, hover: { background: n.color || '#64748b', border: '#94a3b8' } },
+    font: { color: '#e2e8f0', size: 13, face: 'Malgun Gothic' },
+    shadow: { enabled: true, color: 'rgba(0,0,0,0.3)', size: 8 }
+  })));
+  const edges = new vis.DataSet(LAW_NETWORK_DATA.edges.map(e => ({
+    ...e,
+    color: { color: '#475569', highlight: '#60a5fa', opacity: 0.8 },
+    font: { color: '#94a3b8', size: 11, strokeWidth: 3, strokeColor: '#0f172a', face: 'Malgun Gothic' },
+    smooth: { type: 'curvedCW', roundness: 0.15 }
+  })));
+
+  lawNetwork = new vis.Network(container, { nodes, edges }, {
+    physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -60, centralGravity: 0.01, springLength: 160, springConstant: 0.03, damping: 0.4 }, stabilization: { iterations: 250 } },
+    interaction: { hover: true, zoomView: true, dragView: true, tooltipDelay: 200 },
+    nodes: { shape: 'dot', size: 18, borderWidth: 2 },
+    edges: { arrows: { to: { enabled: true, scaleFactor: 0.5 } }, width: 1.5 }
+  });
+
+  lawNetwork.on('click', function(params) {
+    if (params.nodes.length > 0) {
+      const nodeId = params.nodes[0];
+      const nodeData = LAW_NETWORK_DATA.nodes.find(n => n.id === nodeId);
+      if (nodeData) showLawDetail(nodeData);
+    }
+  });
+
+  document.getElementById('law-info').textContent =
+    `노드: ${LAW_NETWORK_DATA.nodes.length} | 엣지: ${LAW_NETWORK_DATA.edges.length}`;
+}
+
+function switchTab(tab) {
+  if (tab === 'law' && !HAS_LAW_NETWORK) return;
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.graph-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(tab === 'ontology' ? 'ontology-panel' : 'law-panel').classList.add('active');
+  updateLegend();
+  const net = tab === 'ontology' ? ontologyNetwork : lawNetwork;
+  if (net) setTimeout(() => net.fit({ animation: true }), 150);
+}
+
+function searchGraph(type, query) {
+  const net = type === 'ontology' ? ontologyNetwork : lawNetwork;
+  const data = type === 'ontology' ? ONTOLOGY_DATA : LAW_NETWORK_DATA;
+  if (!net || !data) return;
+  if (!query) { net.unselectAll(); return; }
+  const q = query.toLowerCase();
+  const matches = data.nodes.filter(n =>
+    (n.label || '').toLowerCase().includes(q) ||
+    (n.title || '').toLowerCase().includes(q) ||
+    (n.koreanLabel || '').toLowerCase().includes(q)
+  );
+  if (matches.length > 0) {
+    net.selectNodes(matches.map(m => m.id));
+    if (matches.length === 1) net.focus(matches[0].id, { scale: 1.2, animation: true });
+  }
+}
+
+function showOntologyDetail(node) {
+  const panel = document.getElementById('panel-content');
+  document.getElementById('panel-title').textContent = node.label ? node.label.replace(/\n/g, ' ') : node.id;
+  let html = '';
+  if (node.nodeType) html += propHtml('유형', node.nodeType);
+  if (node.uri) html += propHtml('URI', `<span style="font-size:11px;word-break:break-all">${node.uri}</span>`);
+  if (node.koreanLabel) html += propHtml('한국어명', node.koreanLabel);
+  if (node.properties && node.properties.length > 0) {
+    html += `<div class="prop-group"><div class="prop-label">속성 (${node.properties.length}개)</div>`;
+    node.properties.forEach(p => { html += `<div class="prop-item prop-value">${p}</div>`; });
+    html += '</div>';
+  }
+  if (node.samples && node.samples.length > 0) {
+    html += `<div class="prop-group"><div class="prop-label">샘플 법령</div>`;
+    node.samples.forEach(s => { html += `<div class="prop-item prop-value">${s.label || s}</div>`; });
+    html += '</div>';
+  }
+  panel.innerHTML = html || '<div class="panel-empty">추가 정보 없음</div>';
+  document.getElementById('sidePanel').classList.remove('collapsed');
+}
+
+function showLawDetail(node) {
+  const panel = document.getElementById('panel-content');
+  document.getElementById('panel-title').textContent = node.title || node.label || node.id;
+  let html = '';
+  if (node.lawType) {
+    const c = getColor(node.lawType);
+    html += propHtml('유형', `<span style="color:${c.bg}">\u25cf</span> ${c.label}`);
+  }
+  if (node.resourceId) html += propHtml('리소스 ID', node.resourceId);
+  if (node.detail && Object.keys(node.detail).length > 0) {
+    for (const [key, values] of Object.entries(node.detail)) {
+      if (Array.isArray(values)) {
+        html += `<div class="prop-group"><div class="prop-label">${escHtml(key)}</div>`;
+        values.forEach(v => { html += `<div class="prop-item prop-value">${escHtml(v)}</div>`; });
+        html += '</div>';
+      } else {
+        html += propHtml(key, escHtml(String(values)));
+      }
+    }
+  }
+  if (node.uri) html += propHtml('LOD URI', `<a href="${node.uri}" target="_blank" rel="noopener">${node.uri}</a>`);
+  panel.innerHTML = html || '<div class="panel-empty">추가 정보 없음</div>';
+  document.getElementById('sidePanel').classList.remove('collapsed');
+}
+
+function propHtml(label, value) {
+  return `<div class="prop-group"><div class="prop-label">${escHtml(label)}</div><div class="prop-value">${value}</div></div>`;
+}
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function closePanel() { document.getElementById('sidePanel').classList.add('collapsed'); }
+
+function updateLegend() {
+  const legend = document.getElementById('legend');
+  let items;
+  if (currentTab === 'ontology') {
+    items = [
+      { color: '#3b82f6', label: '법령 클래스' },
+      { color: '#10b981', label: '판례 클래스' },
+      { color: '#f59e0b', label: '자치법규 클래스' },
+      { color: '#ef4444', label: '행정규칙 클래스' },
+      { color: '#64748b', label: '기타 클래스' },
+    ];
+  } else {
+    items = [
+      { color: '#3b82f6', label: '현행법령' },
+      { color: '#10b981', label: '판례' },
+      { color: '#f59e0b', label: '자치법규' },
+      { color: '#ef4444', label: '행정규칙' },
+      { color: '#8b5cf6', label: '조약' },
+      { color: '#475569', label: '관련 리소스' },
+    ];
+  }
+  legend.innerHTML = items.map(i =>
+    `<div class="legend-item"><div class="legend-dot" style="background:${i.color}"></div>${i.label}</div>`
+  ).join('');
+}
+
+window.addEventListener('load', () => {
+  initOntologyGraph();
+  if (HAS_LAW_NETWORK) initLawGraph();
+  updateLegend();
+});
+</script>
+</body>
+</html>
